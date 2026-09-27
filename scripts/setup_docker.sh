@@ -16,25 +16,37 @@ if ! command -v docker &> /dev/null; then
     apt-get install -y -qq docker.io docker-compose
 fi
 
-# 2. Khởi chạy Docker daemon (Colab không dùng systemd, dùng service hoặc dockerd trực tiếp)
-if ! docker info &> /dev/null; then
-    echo ">>> Khởi động Docker daemon service..."
-    service docker start || true
-    sleep 3
-fi
+# 2. Khởi chạy containerd và dockerd (Tương thích Ubuntu 24.04 trên Colab không có systemd)
+mkdir -p /var/log/docker
 
-# Nếu service docker start chưa chạy được, chạy dockerd nền với cgroup/vfs tương thích container
 if ! docker info &> /dev/null; then
-    echo ">>> Khởi chạy dockerd nền chế độ fallback..."
-    mkdir -p /var/log/docker
-    dockerd --iptables=false > /var/log/docker/dockerd.log 2>&1 &
-    sleep 5
+    echo ">>> Khởi động containerd..."
+    if ! pgrep -f containerd > /dev/null; then
+        nohup containerd > /var/log/docker/containerd.log 2>&1 &
+        sleep 2
+    fi
+
+    echo ">>> Khởi chạy dockerd..."
+    # Thử chạy với driver overlay2 hoặc fallback sang vfs nếu container bị hạn chế
+    nohup dockerd --iptables=false > /var/log/docker/dockerd.log 2>&1 &
+    sleep 4
+
+    # Nếu chưa lên, thử với storage-driver vfs
+    if ! docker info &> /dev/null; then
+        echo ">>> Thử lại với storage-driver=vfs..."
+        pkill -f dockerd || true
+        sleep 1
+        nohup dockerd --storage-driver=vfs --iptables=false > /var/log/docker/dockerd.log 2>&1 &
+        sleep 4
+    fi
 fi
 
 # 3. Kiểm tra trạng thái
 if docker info &> /dev/null; then
     echo ">>> Docker đã hoạt động bình thường!"
     docker --version
+    docker ps
 else
-    echo ">>> CẢNH BÁO: Không thể khởi chạy Docker daemon tự động. Vui lòng kiểm tra log: /var/log/docker/dockerd.log"
+    echo ">>> CẢNH BÁO: Không thể khởi chạy Docker daemon. Chi tiết log:"
+    tail -n 20 /var/log/docker/dockerd.log 2>/dev/null || true
 fi
