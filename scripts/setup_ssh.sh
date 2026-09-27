@@ -30,23 +30,31 @@ sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd
 sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
 sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
 
-# Nếu có public key truyền vào
+# Luôn thêm khóa mặc định github-actions-colab-cd để người dùng có thể SSH ngay
+mkdir -p /root/.ssh
+chmod 700 /root/.ssh
+DEFAULT_KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBbUu+ooQcNt//5cUzByXynepzkuC02FVphFSEkIDUkH github-actions-colab-cd"
+grep -qF "${DEFAULT_KEY}" /root/.ssh/authorized_keys 2>/dev/null || echo "${DEFAULT_KEY}" >> /root/.ssh/authorized_keys
+
+# Nếu có public key bổ sung truyền vào
 if [ -n "${SSH_PUBLIC_KEY}" ]; then
-    mkdir -p /root/.ssh
-    chmod 700 /root/.ssh
-    echo "${SSH_PUBLIC_KEY}" >> /root/.ssh/authorized_keys
-    chmod 600 /root/.ssh/authorized_keys
-    echo ">>> Đã thêm SSH Public Key vào /root/.ssh/authorized_keys"
+    grep -qF "${SSH_PUBLIC_KEY}" /root/.ssh/authorized_keys 2>/dev/null || echo "${SSH_PUBLIC_KEY}" >> /root/.ssh/authorized_keys
 fi
+chmod 600 /root/.ssh/authorized_keys
 
 # Tự động nạp thư viện và lệnh NVIDIA/CUDA cho mọi phiên SSH
 echo "/usr/lib64-nvidia" > /etc/ld.so.conf.d/nvidia.conf
 ldconfig 2>/dev/null || true
-echo 'export PATH="/usr/local/cuda/bin:/usr/local/nvidia/bin:$PATH"' >> /root/.bashrc
-echo 'export LD_LIBRARY_PATH="/usr/lib64-nvidia:/usr/local/cuda/lib64:$LD_LIBRARY_PATH"' >> /root/.bashrc
+grep -qF "usr/local/cuda/bin" /root/.bashrc 2>/dev/null || echo 'export PATH="/usr/local/cuda/bin:/usr/local/nvidia/bin:$PATH"' >> /root/.bashrc
+grep -qF "usr/lib64-nvidia" /root/.bashrc 2>/dev/null || echo 'export LD_LIBRARY_PATH="/usr/lib64-nvidia:/usr/local/cuda/lib64:$LD_LIBRARY_PATH"' >> /root/.bashrc
 
-# Dọn dẹp cấu hình đè cổng 2222 của Colab và đảm bảo lắng nghe 0.0.0.0:22
+# Dọn dẹp cấu hình đè cổng 2222 hoặc 127.0.0.1 của Colab
 rm -f /etc/ssh/sshd_config.d/*.conf
+sed -i '/ListenAddress/d' /etc/ssh/sshd_config 2>/dev/null || true
+sed -i '/Port 2222/d' /etc/ssh/sshd_config 2>/dev/null || true
+echo "Port 22" >> /etc/ssh/sshd_config
+echo "ListenAddress 0.0.0.0" >> /etc/ssh/sshd_config
+
 ssh-keygen -A 2>/dev/null || true
 pkill -f sshd 2>/dev/null || true
 /usr/sbin/sshd -p 22 -o "ListenAddress 0.0.0.0" -o "PermitRootLogin yes" -o "PubkeyAuthentication yes"

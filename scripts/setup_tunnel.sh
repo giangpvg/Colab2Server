@@ -61,16 +61,26 @@ case "${MODE}" in
             exit 1
         fi
         echo ">>> Cài đặt Tailscale..."
-        curl -fsSL https://tailscale.com/install.sh | sh
+        if ! command -v tailscale &> /dev/null; then
+            curl -fsSL https://tailscale.com/install.sh | sh
+        fi
         
-        echo ">>> Khởi chạy tailscaled service..."
-        service tailscaled start || tailscaled --tun=userspace-networking > /var/log/tailscale.log 2>&1 &
+        echo ">>> Khởi chạy tailscaled service (chế độ userspace)..."
+        pkill -f tailscaled 2>/dev/null || true
+        nohup tailscaled --tun=userspace-networking > /tmp/tailscale.log 2>&1 &
         sleep 3
 
-        echo ">>> Đăng nhập Tailscale với Auth Key & bật Tailscale SSH..."
-        tailscale up --authkey="${PARAM}" --ssh --hostname="colab-server" --accept-routes
-        echo ">>> Kết nối Tailscale thành công! Máy Colab đã gia nhập mạng riêng ảo của bạn."
-        tailscale ip -4
+        echo ">>> Đăng nhập Tailscale với Auth Key..."
+        tailscale up --authkey="${PARAM}" --hostname="colab-server" --accept-routes
+
+        TAILSCALE_IP=$(tailscale ip -4 2>/dev/null || true)
+        echo "=========================================================="
+        echo "🎉 KẾT NỐI TAILSCALE THÀNH CÔNG!"
+        echo "👉 Tên máy: colab-server"
+        echo "👉 IP Tailscale: ${TAILSCALE_IP}"
+        echo "👉 Lệnh SSH từ terminal máy tính của bạn:"
+        echo "   ssh -i ~/.ssh/colab_ci_cd root@${TAILSCALE_IP}"
+        echo "=========================================================="
         ;;
 
     *)
