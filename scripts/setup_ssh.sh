@@ -39,7 +39,16 @@ if [ -n "${SSH_PUBLIC_KEY}" ]; then
     echo ">>> Đã thêm SSH Public Key vào /root/.ssh/authorized_keys"
 fi
 
-# Khởi chạy SSH service
-service ssh restart
+# Tự động nạp thư viện và lệnh NVIDIA/CUDA cho mọi phiên SSH
+echo "/usr/lib64-nvidia" > /etc/ld.so.conf.d/nvidia.conf
+ldconfig 2>/dev/null || true
+echo 'export PATH="/usr/local/cuda/bin:/usr/local/nvidia/bin:$PATH"' >> /root/.bashrc
+echo 'export LD_LIBRARY_PATH="/usr/lib64-nvidia:/usr/local/cuda/lib64:$LD_LIBRARY_PATH"' >> /root/.bashrc
 
-echo ">>> OpenSSH Server đã sẵn sàng lắng nghe tại cổng 22!"
+# Dọn dẹp cấu hình đè cổng 2222 của Colab và đảm bảo lắng nghe 0.0.0.0:22
+rm -f /etc/ssh/sshd_config.d/*.conf
+ssh-keygen -A 2>/dev/null || true
+pkill -f sshd 2>/dev/null || true
+/usr/sbin/sshd -p 22 -o "ListenAddress 0.0.0.0" -o "PermitRootLogin yes" -o "PubkeyAuthentication yes"
+
+echo ">>> OpenSSH Server đã sẵn sàng lắng nghe tại 0.0.0.0:22 với đầy đủ driver GPU!"
