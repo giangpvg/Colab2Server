@@ -40,7 +40,7 @@ mkdir -p "${RUNNER_DIR}"
 cd "${RUNNER_DIR}"
 
 # 2. Tải bản mới nhất của GitHub Actions Runner nếu chưa có
-RUNNER_VERSION="2.322.0" # Hoặc tự động lấy phiên bản mới nhất
+RUNNER_VERSION="2.337.0"
 if [ ! -f "config.sh" ]; then
     echo ">>> Đang tải GitHub Actions Runner v${RUNNER_VERSION}..."
     curl -o actions-runner-linux-x64.tar.gz -L "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz"
