@@ -68,6 +68,8 @@ jobs:
             docker logs colab_demo_api
             exit 1
           fi
+
+  deploy_via_tailscale:
     name: Deploy qua Tailscale VPN
     if: ${{ github.event.inputs.deploy_mode == 'tailscale' }}
     runs-on: ubuntu-latest
