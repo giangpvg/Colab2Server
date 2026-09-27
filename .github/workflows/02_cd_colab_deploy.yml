@@ -92,7 +92,7 @@ jobs:
 
       - name: 4. Thực thi Triển Khai trên Colab qua SSH
         run: |
-          ssh -o StrictHostKeyChecking=no root@colab-server << 'EOF'
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no root@colab-server << 'EOF'
             echo ">>> Kết nối thành công tới Colab Server!"
             mkdir -p /root/deploy/colab_app
             cd /root/deploy/colab_app
