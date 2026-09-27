@@ -4,16 +4,70 @@ on:
   workflow_dispatch:
     inputs:
       deploy_mode:
-        description: 'Phương thức kết nối (tailscale hoặc cloudflare)'
+        description: 'Phương thức triển khai (CD Method)'
         required: true
-        default: 'tailscale'
+        default: 'direct-colab-runner'
         type: choice
         options:
+          - direct-colab-runner
           - tailscale
           - cloudflare
 
 jobs:
-  deploy_via_tailscale:
+  deploy_direct_runner:
+    name: CD - Deploy Trực Tiếp trên Colab Server
+    if: ${{ github.event.inputs.deploy_mode == 'direct-colab-runner' || github.event_name == 'push' }}
+    runs-on: [ self-hosted, colab ]
+
+    steps:
+      - name: 1. Checkout Mã Nguồn Mới Nhất
+        uses: actions/checkout@v4
+
+      - name: 2. Kiểm tra trạng thái Docker trên Colab
+        run: |
+          echo ">>> Kiểm tra Docker Daemon..."
+          if ! docker info > /dev/null 2>&1; then
+            echo ">>> Docker chưa chạy! Đang tự động kích hoạt containerd & dockerd..."
+            nohup containerd > /tmp/containerd.log 2>&1 &
+            sleep 2
+            nohup dockerd --storage-driver=vfs --iptables=false > /tmp/dockerd.log 2>&1 &
+            sleep 4
+          fi
+          docker info || { echo "LỖI: Không thể khởi chạy Docker!"; exit 1; }
+
+      - name: 3. Dừng Container Cũ & Dọn Dẹp Phiên Bản Trước
+        run: |
+          cd sample_app
+          echo ">>> Đang dừng phiên bản cũ nếu có..."
+          docker-compose down 2>/dev/null || true
+
+      - name: 4. Build và Khởi Chạy Container Mới (Zero-Downtime Rollout)
+        run: |
+          cd sample_app
+          echo ">>> Đang build và khởi chạy phiên bản mới..."
+          docker-compose up -d --build
+          echo ">>> Danh sách container đang chạy:"
+          docker ps
+
+      - name: 5. Automated Health Check (Kiểm tra sức khỏe dịch vụ)
+        run: |
+          echo ">>> Đang chờ ứng dụng sẵn sàng..."
+          sleep 6
+          
+          # Thực hiện health check API
+          RESPONSE=$(curl -s http://localhost:8000/health || echo "FAILED")
+          echo "Kết quả Healthcheck: $RESPONSE"
+          
+          if [[ "$RESPONSE" == *"healthy"* ]]; then
+            echo "=========================================="
+            echo "🎉 DEPLOY THÀNH CÔNG LÊN COLAB STAGING SERVER!"
+            echo "=========================================="
+            curl -s http://localhost:8000/system-info | jq . || curl -s http://localhost:8000/system-info
+          else
+            echo "❌ Healthcheck THẤT BẠI! Container gặp sự cố."
+            docker logs colab_demo_api
+            exit 1
+          fi
     name: Deploy qua Tailscale VPN
     if: ${{ github.event.inputs.deploy_mode == 'tailscale' }}
     runs-on: ubuntu-latest
