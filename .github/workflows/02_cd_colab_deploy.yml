@@ -1,0 +1,115 @@
+name: CD - Triển khai ứng dụng lên Colab Staging Server
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_mode:
+        description: 'Phương thức kết nối (tailscale hoặc cloudflare)'
+        required: true
+        default: 'tailscale'
+        type: choice
+        options:
+          - tailscale
+          - cloudflare
+
+jobs:
+  deploy_via_tailscale:
+    name: Deploy qua Tailscale VPN
+    if: ${{ github.event.inputs.deploy_mode == 'tailscale' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 2. Kết nối vào Tailscale Mạng Riêng Ảo
+        uses: tailscale/github-action@v2
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+
+      - name: 3. Cấu hình SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.COLAB_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H colab-server >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: 4. Thực thi Triển Khai trên Colab qua SSH
+        run: |
+          ssh -o StrictHostKeyChecking=no root@colab-server << 'EOF'
+            echo ">>> Kết nối thành công tới Colab Server!"
+            mkdir -p /root/deploy/colab_app
+            cd /root/deploy/colab_app
+            
+            # Cập nhật mã nguồn hoặc kéo từ Git
+            # (Ở đây ta clone/pull hoặc copy qua scp/rsync)
+            if [ ! -d ".git" ]; then
+              git clone https://github.com/${{ github.repository }} .
+            else
+              git fetch --all && git reset --hard origin/main
+            fi
+            
+            echo ">>> Khởi động ứng dụng bằng Docker Compose..."
+            cd sample_app
+            docker-compose down || true
+            docker-compose up -d --build
+            
+            echo ">>> Chờ container sẵn sàng..."
+            sleep 5
+            
+            echo ">>> Kiểm tra endpoint Healthcheck..."
+            curl -f http://localhost:8000/health || exit 1
+            echo ">>> DEPLOY THÀNH CÔNG!"
+          EOF
+
+  deploy_via_cloudflare:
+    name: Deploy qua Cloudflare Tunnel SSH
+    if: ${{ github.event.inputs.deploy_mode == 'cloudflare' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 2. Cài đặt cloudflared client trên Runner
+        run: |
+          curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i cloudflared.deb
+          rm -f cloudflared.deb
+
+      - name: 3. Cấu hình SSH qua Cloudflare Proxy
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.COLAB_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          
+          # Cấu hình SSH ProxyCommand sử dụng cloudflared
+          cat << 'EOF' > ~/.ssh/config
+          Host ${{ secrets.CF_SSH_HOSTNAME }}
+            ProxyCommand /usr/local/bin/cloudflared access ssh --hostname %h
+            User root
+            IdentityFile ~/.ssh/id_rsa
+            StrictHostKeyChecking no
+          EOF
+
+      - name: 4. SSH và Deploy Docker Service
+        run: |
+          ssh ${{ secrets.CF_SSH_HOSTNAME }} << 'EOF'
+            echo ">>> Kết nối thành công tới Colab Server qua Cloudflare Tunnel!"
+            mkdir -p /root/deploy/colab_app
+            cd /root/deploy/colab_app
+            
+            if [ ! -d ".git" ]; then
+              git clone https://github.com/${{ github.repository }} .
+            else
+              git fetch --all && git reset --hard origin/main
+            fi
+            
+            cd sample_app
+            docker-compose down || true
+            docker-compose up -d --build
+            
+            sleep 5
+            curl -f http://localhost:8000/health || exit 1
+            echo ">>> DEPLOY THÀNH CÔNG TRÊN COLAB!"
+          EOF

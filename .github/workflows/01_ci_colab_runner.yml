@@ -1,0 +1,47 @@
+name: CI - Chạy trên Colab Self-Hosted Runner
+
+on:
+  push:
+    branches: [ "main", "master", "develop" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  test_and_build:
+    name: Build & Test trên Colab Runner
+    # Chạy trực tiếp trên máy Colab đã đăng ký nhãn self-hosted và colab
+    runs-on: [ self-hosted, colab ]
+
+    steps:
+      - name: 1. Checkout Mã Nguồn
+        uses: actions/checkout@v4
+
+      - name: 2. Kiểm tra phần cứng máy Colab đang chạy Job
+        run: |
+          echo "=========================================="
+          echo ">>> Thông tin Runner:"
+          uname -a
+          echo ">>> Thông tin CPU & RAM:"
+          lscpu | grep "Model name" || true
+          free -h
+          echo ">>> Kiểm tra GPU (nếu có runtime GPU):"
+          nvidia-smi || echo "Chạy trên CPU runtime"
+          echo "=========================================="
+
+      - name: 3. Thiết lập Python môi trường
+        run: |
+          python3 --version
+          python3 -m pip install --upgrade pip
+          pip install -r sample_app/requirements.txt
+
+      - name: 4. Chạy Unit Tests & Lint
+        run: |
+          cd sample_app
+          pytest -v tests/
+
+      - name: 5. Kiểm thử đóng gói Docker Image trên Colab
+        run: |
+          cd sample_app
+          docker build -t colab-demo-api:ci-test .
+          echo ">>> Docker Image đã build thành công trên Colab!"
