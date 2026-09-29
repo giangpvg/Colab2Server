@@ -49,10 +49,21 @@ case "${MODE}" in
             rm -f /tmp/cloudflared.deb
         fi
 
-        echo ">>> Khởi chạy Cloudflare Tunnel với Token..."
+        echo ">>> Khởi chạy Cloudflare Tunnel với Token cố định..."
+        mkdir -p /var/log/cloudflared
+        pkill -f "cloudflared tunnel run" 2>/dev/null || true
         nohup cloudflared tunnel run --token "${PARAM}" > /var/log/cloudflared/tunnel.log 2>&1 &
-        sleep 3
-        echo ">>> Cloudflare Tunnel cố định đã hoạt động!"
+        sleep 4
+        if pgrep -f "cloudflared" > /dev/null; then
+            echo "=========================================================="
+            echo "🎉 CLOUDFLARE NAMED TUNNEL ĐÃ HOẠT ĐỘNG THÀNH CÔNG!"
+            echo "👉 Trạng thái: Đang kết nối tới tên miền riêng của bạn qua Cloudflare."
+            echo "👉 Xem log chi tiết tại: /var/log/cloudflared/tunnel.log"
+            echo "=========================================================="
+        else
+            echo "❌ CẢNH BÁO: Không thể khởi chạy Cloudflare Tunnel. Kiểm tra log:"
+            cat /var/log/cloudflared/tunnel.log || true
+        fi
         ;;
 
     "tailscale")
