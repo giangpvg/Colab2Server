@@ -22,23 +22,15 @@ mkdir -p /var/log/docker
 if ! docker info &> /dev/null; then
     echo ">>> Khởi động containerd..."
     if ! pgrep -f containerd > /dev/null; then
-        nohup containerd > /var/log/docker/containerd.log 2>&1 &
+        setsid containerd </dev/null > /var/log/docker/containerd.log 2>&1 &
         sleep 2
     fi
 
-    echo ">>> Khởi chạy dockerd..."
-    # Thử chạy với driver overlay2 hoặc fallback sang vfs nếu container bị hạn chế
-    nohup dockerd --iptables=false > /var/log/docker/dockerd.log 2>&1 &
+    echo ">>> Khởi chạy dockerd (chế độ container tương thích: --bridge=none --iptables=false)..."
+    pkill -f dockerd 2>/dev/null || true
+    sleep 1
+    setsid dockerd --storage-driver=vfs --iptables=false --ip6tables=false --bridge=none </dev/null > /var/log/docker/dockerd.log 2>&1 &
     sleep 4
-
-    # Nếu chưa lên, thử với storage-driver vfs
-    if ! docker info &> /dev/null; then
-        echo ">>> Thử lại với storage-driver=vfs..."
-        pkill -f dockerd || true
-        sleep 1
-        nohup dockerd --storage-driver=vfs --iptables=false > /var/log/docker/dockerd.log 2>&1 &
-        sleep 4
-    fi
 fi
 
 # 3. Kiểm tra trạng thái
