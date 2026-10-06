@@ -52,7 +52,7 @@ case "${MODE}" in
         echo ">>> Khởi chạy Cloudflare Tunnel với Token cố định..."
         mkdir -p /var/log/cloudflared
         pkill -f "cloudflared tunnel run" 2>/dev/null || true
-        nohup cloudflared tunnel run --token "${PARAM}" > /var/log/cloudflared/tunnel.log 2>&1 &
+        nohup cloudflared tunnel run --url http://localhost:8000 --token "${PARAM}" > /var/log/cloudflared/tunnel.log 2>&1 &
         sleep 4
         if pgrep -f "cloudflared" > /dev/null; then
             echo "=========================================================="
